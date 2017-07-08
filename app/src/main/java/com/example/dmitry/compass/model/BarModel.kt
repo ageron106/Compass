@@ -21,4 +21,10 @@ class BarModel(val dto: BarDto) {
     fun getDistance(locationPoint: LocationPoint): Int {
         return location.getDistance(locationPoint).toInt()
     }
+
+    fun getPhotoReference(): String {
+        if (dto.photos.isEmpty()) return ""
+        return dto.photos[0]?.photo_reference!!
+
+    }
 }

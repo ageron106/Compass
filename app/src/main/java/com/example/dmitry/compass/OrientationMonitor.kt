@@ -37,6 +37,6 @@ class OrientationMonitor(activity: Activity) : IMonitor {
         sensorManager.unregisterListener(sensorListener)
     }
 
-    fun  onPointFound(): BehaviorSubject<SensorEvent> {return sensorChanged}
+    fun onOrientationChanged(): BehaviorSubject<SensorEvent> {return sensorChanged}
 
 }

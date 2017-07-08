@@ -8,5 +8,6 @@ class BarDto {
     var name: String? = null
     var rating: Float? = null
     var price_level: Int? = null
+    var photos: ArrayList<PhotosDto> = ArrayList()
 
 }
