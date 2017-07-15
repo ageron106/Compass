@@ -1,12 +1,18 @@
 package com.example.dmitry.compass
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.pm.PackageManager
 import android.hardware.SensorEvent
+import android.support.v13.app.ActivityCompat
+import android.support.v4.content.ContextCompat
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import com.bluelinelabs.conductor.Controller
 import com.bluelinelabs.conductor.RouterTransaction
 import com.example.dmitry.compass.core.LocationPoint
@@ -28,12 +34,16 @@ import retrofit2.converter.gson.GsonConverterFactory
 class CompassController : Controller() {
 
 
+    lateinit var inflater: LayoutInflater
+    lateinit var container: ViewGroup
     val key = "AIzaSyA5rbx7kV-wcHYLqef3BpWTf8YiiVc6GF8"
     var bestBar: BarModel? = null
     private var mGLView: MyGLSurfaceView? = null
     private var currentDegreeZ = 0f
     private var currentDelta = 0f
     var barName: TextView? = null
+    var barInfoController = BarInfoController()
+
     var compassView: FrameLayout? = null
     val orientationMonitor: OrientationMonitor by lazy {
         OrientationMonitor(activity!!)
@@ -42,32 +52,24 @@ class CompassController : Controller() {
         LocationMonitor(activity!!)
     }
 
+    private val PERMISSION_REQUEST_CODE_LOCATION = 1
     @SuppressLint("MissingPermission")
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup): View {
-
-        val view = inflater.inflate(R.layout.view_compass, container, false)
-        compassView = view.findViewById(R.id.compass)
-        barName = view.findViewById(R.id.tvHeading)
-        val photoReference = bestBar?.getPhotoReference()
-        var url = "https://cdn-tp1.mozu.com/9046-11441/cms/11441/files/0a1a12bf-8d95-4f40-baab-ff1e1039d071?max=300"
-        if (!photoReference.isNullOrEmpty())
-            url = "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400" + "&photoreference=" + photoReference + "&key=" + key
-        val barInfoController = BarInfoController()
-        barName?.setOnClickListener { router.setRoot(RouterTransaction.with(barInfoController)) }
-        mGLView = MyGLSurfaceView(activity)
-        compassView?.addView(mGLView)
-
-        startOrientationManager()
-        startLocationManager()
-
-        return view
+    override fun onCreateView(_inflater: LayoutInflater, _container: ViewGroup): View {
+        inflater = _inflater
+        container = _container
+        return createView();
     }
 
     private fun startLocationManager() {
         locationMonitor.start()
         locationMonitor
                 .onPointFound()
-                .subscribe({ point -> searchPlaces(point) })
+                .subscribe({ point ->
+                    run {
+                        barInfoController.lastFondLocation = point
+                        searchPlaces(point)
+                    }
+                })
     }
 
     private fun startOrientationManager() {
@@ -103,13 +105,20 @@ class CompassController : Controller() {
         val value: Callback<BarsDto> = object : Callback<BarsDto> {
             override fun onResponse(call: Call<BarsDto>, response: Response<BarsDto>) {
                 val bars = response.body().results.map { dto -> BarModel(dto) }
-                if(bars.isEmpty()) return
+                if (bars.isEmpty()) return
                 bestBar = bars
                         .sortedWith(compareByDescending<BarModel> { it.rating }
                                 .thenBy { it.priceLevel })
                         .get(0)
                 setHeader(bestBar?.name)
                 changeDirection(point, bestBar?.location)
+                barName?.setOnClickListener {
+                    if (barInfoController.isDestroyed) {
+                        barInfoController = BarInfoController()
+                    }
+                    barInfoController.bestBar = bestBar
+                    router.pushController(RouterTransaction.with(barInfoController))
+                }
             }
 
             override fun onFailure(call: Call<BarsDto>, t: Throwable) {
@@ -147,4 +156,61 @@ class CompassController : Controller() {
         }
         currentDelta = degree + delta
     }
+
+    fun requestPermission(strPermission: String, perCode: Int, _a: Activity) {
+
+        if (ActivityCompat.shouldShowRequestPermissionRationale(_a, strPermission)) {
+            Toast.makeText(applicationContext, "GPS permission allows us to access location data. Please allow in App Settings for additional functionality.", Toast.LENGTH_LONG).show()
+        } else {
+
+            ActivityCompat.requestPermissions(_a, arrayOf(strPermission), perCode)
+        }
+    }
+
+    fun checkPermission(strPermission: String, _a: Activity): Boolean {
+        val result = ContextCompat.checkSelfPermission(_a, strPermission)
+        if (result == PackageManager.PERMISSION_GRANTED) {
+
+            return true
+
+        } else {
+
+            return false
+
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        when (requestCode) {
+
+            PERMISSION_REQUEST_CODE_LOCATION -> if (grantResults.size > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                createView()
+
+            } else {
+
+                Toast.makeText(applicationContext, "Permission Denied, You cannot access location data.", Toast.LENGTH_LONG).show()
+
+            }
+        }
+    }
+
+    private fun createView(): View {
+        if (checkPermission(Manifest.permission.ACCESS_FINE_LOCATION, activity!!)) {
+        } else {
+            requestPermission(Manifest.permission.ACCESS_FINE_LOCATION, PERMISSION_REQUEST_CODE_LOCATION, activity!!);
+        }
+        val view = inflater.inflate(R.layout.view_compass, container, false)
+        compassView = view!!.findViewById(R.id.compass)
+        barName = view!!.findViewById(R.id.tvHeading)
+
+        mGLView = MyGLSurfaceView(activity)
+        compassView?.addView(mGLView)
+
+        startOrientationManager()
+        startLocationManager()
+        return view
+    }
+
+
 }
